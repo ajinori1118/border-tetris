@@ -1,0 +1,58 @@
+export const PLAYER_WIDTH = 10;
+export const PLAYER_HEIGHT = 20;
+
+export type Rotation = 0 | 1 | 2 | 3;
+export type RotationDirection = -1 | 1;
+export type PieceType = "I" | "O" | "T" | "S" | "Z" | "J" | "L";
+
+export type Cell = {
+  x: number;
+  y: number;
+};
+
+export type Piece = {
+  id: string;
+  type: PieceType;
+  ownerId: string;
+  x: number;
+  y: number;
+  rotation: Rotation;
+};
+
+export type World = {
+  playerCount: number;
+  width: number;
+  height: number;
+  lockedCells: Cell[];
+  activePieces: Piece[];
+};
+
+export type PieceAction =
+  | {
+      pieceId: string;
+      kind: "move";
+      dx: number;
+      dy: number;
+    }
+  | {
+      pieceId: string;
+      kind: "rotate";
+      direction: RotationDirection;
+    }
+  | {
+      pieceId: string;
+      kind: "none";
+    };
+
+export type TickResult = {
+  world: World;
+  failedPieceIds: string[];
+  lockedPieceIds: string[];
+  clearedRowsByPlayer: number[][];
+};
+
+export const createWorldSize = (playerCount: number) => ({
+  playerCount,
+  width: PLAYER_WIDTH * playerCount,
+  height: PLAYER_HEIGHT,
+});
