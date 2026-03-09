@@ -173,10 +173,8 @@ const clearLinesByPlayer = (
 
         for (const row of clearedRows) {
           if (row > cell.y) {
-            break;
+            drop += 1;
           }
-
-          drop += 1;
         }
 
         return {
