@@ -2,6 +2,7 @@ import { canPlace, isGrounded } from "./collision";
 import { getPieceCells } from "./piece";
 import {
   Cell,
+  LockedCell,
   Piece,
   PieceAction,
   PLAYER_HEIGHT,
@@ -136,9 +137,9 @@ const resolveActions = (
 };
 
 const clearLinesByPlayer = (
-  lockedCells: Cell[],
+  lockedCells: LockedCell[],
   playerCount: number,
-): { lockedCells: Cell[]; clearedRowsByPlayer: number[][] } => {
+): { lockedCells: LockedCell[]; clearedRowsByPlayer: number[][] } => {
   let nextCells = lockedCells;
   const clearedRowsByPlayer: number[][] = [];
 
@@ -178,7 +179,7 @@ const clearLinesByPlayer = (
         }
 
         return {
-          x: cell.x,
+          ...cell,
           y: cell.y + drop,
         };
       });
@@ -207,7 +208,13 @@ export const lockGroundedPieces = (
   const lockedIdSet = new Set(lockedPieceIds);
   const groundedPieces = world.activePieces.filter((piece) => lockedIdSet.has(piece.id));
   const stillActivePieces = world.activePieces.filter((piece) => !lockedIdSet.has(piece.id));
-  const groundedCells = groundedPieces.flatMap((piece) => getPieceCells(piece, world.width));
+  const groundedCells = groundedPieces.flatMap((piece) =>
+    getPieceCells(piece, world.width).map((cell) => ({
+      ...cell,
+      ownerId: piece.ownerId,
+      pieceType: piece.type,
+    })),
+  );
 
   return {
     world: {

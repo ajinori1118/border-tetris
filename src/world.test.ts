@@ -45,12 +45,17 @@ test("tickWorld rejects both pieces when they claim the same cells in one tick",
 });
 
 test("tickWorld clears lines independently for each player board", () => {
-  const playerZeroFullRow = Array.from({ length: 10 }, (_, x) => ({ x, y: 19 }));
+  const playerZeroFullRow = Array.from({ length: 10 }, (_, x) => ({
+    x,
+    y: 19,
+    ownerId: "player-1",
+    pieceType: "I" as const,
+  }));
   const world = createWorld({
     lockedCells: [
       ...playerZeroFullRow,
-      { x: 0, y: 18 },
-      { x: 10, y: 19 },
+      { x: 0, y: 18, ownerId: "player-1", pieceType: "O" as const },
+      { x: 10, y: 19, ownerId: "player-2", pieceType: "T" as const },
     ],
   });
 
@@ -76,4 +81,14 @@ test("tickWorld locks a piece when it is grounded on another active piece", () =
   assert.deepEqual(result.lockedPieceIds, ["top"]);
   assert.deepEqual(result.world.activePieces.map((piece) => piece.id), ["bottom"]);
   assert.equal(result.world.lockedCells.length, 4);
+  assert.deepEqual(
+    result.world.lockedCells.map((cell) => ({
+      ownerId: cell.ownerId,
+      pieceType: cell.pieceType,
+    })),
+    Array.from({ length: 4 }, () => ({
+      ownerId: "player-1",
+      pieceType: "O",
+    })),
+  );
 });

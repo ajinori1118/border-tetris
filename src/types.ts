@@ -10,6 +10,11 @@ export type Cell = {
   y: number;
 };
 
+export type LockedCell = Cell & {
+  ownerId: string;
+  pieceType: PieceType;
+};
+
 export type Piece = {
   id: string;
   type: PieceType;
@@ -23,7 +28,7 @@ export type World = {
   playerCount: number;
   width: number;
   height: number;
-  lockedCells: Cell[];
+  lockedCells: LockedCell[];
   activePieces: Piece[];
 };
 
