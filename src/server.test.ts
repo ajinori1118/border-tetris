@@ -102,13 +102,15 @@ test("rotatePiece keeps O pieces in the same state", () => {
 });
 
 test("joinSession reserves separate players and stepSession spawns a controlled piece", () => {
-  const firstJoin = joinSession(createSession(2));
+  const firstJoin = joinSession(createSession(2), "Aki");
   assert.equal(firstJoin.player?.playerIndex, 0);
+  assert.equal(firstJoin.player?.displayName, "Aki");
   assert.deepEqual(firstJoin.session.ringOrder, ["player-1"]);
   assert.equal(firstJoin.player?.role, "playing");
 
-  const secondJoin = joinSession(firstJoin.session);
+  const secondJoin = joinSession(firstJoin.session, "Beni");
   assert.equal(secondJoin.player?.playerIndex, 1);
+  assert.equal(secondJoin.player?.displayName, "Beni");
   assert.deepEqual(secondJoin.session.ringOrder, ["player-1", "player-2"]);
   assert.equal(secondJoin.player?.role, "playing");
 
@@ -149,6 +151,74 @@ test("queuePlayerInput affects only the owning player's active piece", () => {
   assert.equal(afterPiece.x, beforeX + 1);
 });
 
+test("queuePlayerInput applies multiple horizontal moves in one tick", () => {
+  const joined = joinSession(createSession(2));
+  assert.ok(joined.player);
+
+  const spawned = stepSession(joined.session).session;
+  const beforeX =
+    spawned.world.activePieces.find((piece) => piece.ownerId === joined.player?.playerId)?.x ?? -1;
+
+  let nextSession = queuePlayerInput(spawned, joined.player.playerId, "right");
+  nextSession = queuePlayerInput(nextSession, joined.player.playerId, "right");
+  nextSession = queuePlayerInput(nextSession, joined.player.playerId, "right");
+
+  const stepped = stepSession(nextSession);
+  const afterPiece = stepped.session.world.activePieces.find(
+    (piece) => piece.ownerId === joined.player?.playerId,
+  );
+
+  assert.ok(afterPiece);
+  assert.equal(afterPiece.x, beforeX + 1);
+});
+
+test("stepSession applies gravity only on scheduled ticks", () => {
+  const joined = joinSession(createSession(2));
+  assert.ok(joined.player);
+
+  let current = stepSession(joined.session).session;
+  let piece = current.world.activePieces.find((entry) => entry.ownerId === joined.player?.playerId);
+  assert.ok(piece);
+  assert.equal(piece.y, 1);
+
+  for (let index = 0; index < 4; index += 1) {
+    current = stepSession(current).session;
+  }
+
+  piece = current.world.activePieces.find((entry) => entry.ownerId === joined.player?.playerId);
+  assert.ok(piece);
+  assert.equal(piece.y, 2);
+});
+
+test("queuePlayerInput with down accelerates falling", () => {
+  const joined = joinSession(createSession(2));
+  assert.ok(joined.player);
+
+  let current = stepSession(joined.session).session;
+
+  current = stepSession(queuePlayerInput(current, joined.player.playerId, "down")).session;
+  current = stepSession(queuePlayerInput(current, joined.player.playerId, "down")).session;
+
+  const piece = current.world.activePieces.find((entry) => entry.ownerId === joined.player?.playerId);
+  assert.ok(piece);
+  assert.equal(piece.y, 2);
+});
+
+test("queuePlayerInput with up brakes falling", () => {
+  const joined = joinSession(createSession(2));
+  assert.ok(joined.player);
+
+  let current = stepSession(joined.session).session;
+
+  for (let index = 0; index < 8; index += 1) {
+    current = stepSession(queuePlayerInput(current, joined.player.playerId, "up")).session;
+  }
+
+  const piece = current.world.activePieces.find((entry) => entry.ownerId === joined.player?.playerId);
+  assert.ok(piece);
+  assert.equal(piece.y, 1);
+});
+
 test("queuePlayerInput cannot move into a board with no connected player", () => {
   const joined = joinSession(createSession(2));
   assert.ok(joined.player);
@@ -177,7 +247,7 @@ test("queuePlayerInput cannot move into a board with no connected player", () =>
 
   assert.ok(piece);
   assert.equal(piece.x, 0);
-  assert.equal(piece.y, 2);
+  assert.equal(piece.y, 1);
 });
 
 test("queuePlayerInput does not wrap left in a two-player session", () => {
@@ -209,7 +279,7 @@ test("queuePlayerInput does not wrap left in a two-player session", () => {
 
   assert.ok(piece);
   assert.equal(piece.x, 0);
-  assert.equal(piece.y, 2);
+  assert.equal(piece.y, 1);
 });
 
 test("queuePlayerInput wraps left in a three-player ring", () => {
@@ -248,7 +318,7 @@ test("queuePlayerInput wraps left in a three-player ring", () => {
       .sort((left, right) => left - right),
     [0, 0, 29, 29],
   );
-  assert.equal(piece.y, 2);
+  assert.equal(piece.y, 1);
 });
 
 test("queuePlayerInput cannot newly enter a board with a pending topology change", () => {
@@ -290,7 +360,7 @@ test("queuePlayerInput cannot newly enter a board with a pending topology change
 
   assert.ok(piece);
   assert.equal(piece.x, 8);
-  assert.equal(piece.y, 2);
+  assert.equal(piece.y, 1);
 });
 
 test("hard drop immediately locks the piece and carries other active pieces in its path", () => {
@@ -331,14 +401,14 @@ test("hard drop immediately locks the piece and carries other active pieces in i
   assert.deepEqual(
     stepped.session.world.lockedCells.map((cell) => `${cell.x},${cell.y},${cell.ownerId}`).sort(),
     [
-      `9,16,${joinedOne.player.playerId}`,
-      `9,18,${joinedTwo.player.playerId}`,
-      `9,19,${joinedTwo.player.playerId}`,
-      `9,17,${joinedOne.player.playerId}`,
-      `10,16,${joinedOne.player.playerId}`,
-      `10,17,${joinedOne.player.playerId}`,
-      `10,18,${joinedTwo.player.playerId}`,
-      `10,19,${joinedTwo.player.playerId}`,
+      `9,20,${joinedOne.player.playerId}`,
+      `9,22,${joinedTwo.player.playerId}`,
+      `9,23,${joinedTwo.player.playerId}`,
+      `9,21,${joinedOne.player.playerId}`,
+      `10,20,${joinedOne.player.playerId}`,
+      `10,21,${joinedOne.player.playerId}`,
+      `10,22,${joinedTwo.player.playerId}`,
+      `10,23,${joinedTwo.player.playerId}`,
     ].sort(),
   );
 });
@@ -434,7 +504,7 @@ test("dead players revive in the same ring position after the revive delay", () 
     },
   };
 
-  for (let index = 0; index < 12; index += 1) {
+  for (let index = 0; index < 56; index += 1) {
     current = stepSession(current).session;
   }
 
@@ -479,7 +549,7 @@ test("queuePlayerInput cannot enter a dead player's board", () => {
 
   assert.ok(piece);
   assert.equal(piece.x, 10);
-  assert.equal(piece.y, 2);
+  assert.equal(piece.y, 1);
 });
 
 test("disconnected players are removed from ringOrder after the grace period", () => {
@@ -498,7 +568,7 @@ test("disconnected players are removed from ringOrder after the grace period", (
     pendingInputs: {},
   };
 
-  for (let index = 0; index < 31; index += 1) {
+  for (let index = 0; index < 141; index += 1) {
     current = stepSession(current).session;
   }
 
@@ -538,7 +608,7 @@ test("removing a middle player compacts remaining ring indexes", () => {
     pendingInputs: {},
   };
 
-  for (let index = 0; index < 31; index += 1) {
+  for (let index = 0; index < 141; index += 1) {
     current = stepSession(current).session;
   }
 

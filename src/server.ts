@@ -4,6 +4,7 @@ import path from "node:path";
 import { canPlace } from "./collision";
 import { getPieceCells, rotatePiece } from "./piece";
 import {
+  GAME_OVER_LINE_Y,
   LockedCell,
   Piece,
   PieceAction,
@@ -16,7 +17,7 @@ import {
   World,
   createWorldSize,
 } from "./types";
-import { applyLineClears, tickWorld } from "./world";
+import { applyLineClears, applyWorldActions, tickWorld } from "./world";
 
 export type ServerState = {
   tick: number;
@@ -31,14 +32,23 @@ export type SpawnRequest = {
   type: PieceType;
 };
 
-export type PlayerInput = "left" | "right" | "down" | "rotateLeft" | "rotateRight" | "drop";
+export type PlayerInput =
+  | "left"
+  | "right"
+  | "down"
+  | "up"
+  | "rotateLeft"
+  | "rotateRight"
+  | "drop";
 
 export type PlayerState = {
   playerId: string;
   playerIndex: number;
+  displayName: string;
   score: number;
   lines: number;
   nextType: PieceType;
+  gravityMeter: number;
   connected: boolean;
   role: PlayerRole;
   reviveAtTick: number | null;
@@ -73,12 +83,16 @@ type SseClient = {
 };
 
 const SPAWN_X_OFFSET = 4;
-const SPAWN_Y = 1;
+const SPAWN_Y = GAME_OVER_LINE_Y - 3;
 const DEFAULT_PORT = 3000;
 const DEFAULT_PLAYER_COUNT = 12;
-const TICK_MS = 467;
-const REVIVE_DELAY_TICKS = 12;
-const DISCONNECT_GRACE_TICKS = 30;
+const TICK_MS = 100;
+const BASE_GRAVITY_PER_TICK = 0.22;
+const SOFT_DROP_GRAVITY_PER_TICK = 0.68;
+const BRAKE_GRAVITY_PER_TICK = 0.06;
+const REVIVE_DELAY_TICKS = 56;
+const DISCONNECT_GRACE_TICKS = 140;
+const MAX_HORIZONTAL_INPUTS_PER_TICK = 1;
 const PUBLIC_DIR = path.resolve(__dirname, "..", "public");
 const PIECE_TYPES: PieceType[] = ["I", "O", "T", "S", "Z", "J", "L"];
 
@@ -221,9 +235,11 @@ export const createSession = (playerCount: number): SessionState => ({
   players: Array.from({ length: playerCount }, (_, playerIndex) => ({
     playerId: `player-${playerIndex + 1}`,
     playerIndex: -1,
+    displayName: `Player ${playerIndex + 1}`,
     score: 0,
     lines: 0,
     nextType: randomPieceType(),
+    gravityMeter: 0,
     connected: false,
     role: "spectating",
     reviveAtTick: null,
@@ -424,6 +440,7 @@ const applyReadyTopologyChanges = (session: SessionState): SessionState => {
                 playerIndex: nextPlayerIndex,
                 role: "playing",
                 connected: true,
+                gravityMeter: 0,
                 disconnectDeadlineTick: null,
               }
             : entry,
@@ -449,6 +466,7 @@ const applyReadyTopologyChanges = (session: SessionState): SessionState => {
                 ...entry,
                 playerIndex: -1,
                 role: "spectating",
+                gravityMeter: 0,
                 disconnectDeadlineTick: null,
                 reviveAtTick: null,
               }
@@ -512,6 +530,7 @@ const advancePlayerLifecycle = (session: SessionState): SessionState => {
 
 export const joinSession = (
   session: SessionState,
+  displayName?: string,
 ): { session: SessionState; player: PlayerState | null } => {
   const player =
     session.players.find((entry) => entry.role === "spectating" && !entry.connected) ?? null;
@@ -528,6 +547,7 @@ export const joinSession = (
           ? {
               ...entry,
               connected: true,
+              displayName: displayName?.trim() ? displayName.trim().slice(0, 12) : entry.displayName,
             }
           : entry,
       ),
@@ -621,6 +641,7 @@ const resetPlayerBoard = (session: SessionState, playerId: string): SessionState
             score: 0,
             lines: 0,
             nextType: randomPieceType(),
+            gravityMeter: 0,
             role: "dead",
             reviveAtTick: session.tick + REVIVE_DELAY_TICKS,
           }
@@ -646,6 +667,10 @@ const applyInputToPiece = (piece: Piece, input: PlayerInput): Piece => {
     return { ...piece, y: piece.y + 1 };
   }
 
+  if (input === "up") {
+    return piece;
+  }
+
   if (input === "rotateLeft") {
     return rotatePiece(piece, -1);
   }
@@ -655,6 +680,37 @@ const applyInputToPiece = (piece: Piece, input: PlayerInput): Piece => {
   }
 
   return { ...piece, y: piece.y + 18 };
+};
+
+const clampInputsForTick = (inputs: PlayerInput[]): PlayerInput[] => {
+  let horizontalCount = 0;
+
+  return inputs.filter((input) => {
+    if (input !== "left" && input !== "right") {
+      return true;
+    }
+
+    if (horizontalCount >= MAX_HORIZONTAL_INPUTS_PER_TICK) {
+      return false;
+    }
+
+    horizontalCount += 1;
+    return true;
+  });
+};
+
+const getGravityRateForInputs = (inputs: PlayerInput[]): number => {
+  const verticalInput = [...inputs].reverse().find((input) => input === "down" || input === "up");
+
+  if (verticalInput === "down") {
+    return SOFT_DROP_GRAVITY_PER_TICK;
+  }
+
+  if (verticalInput === "up") {
+    return BRAKE_GRAVITY_PER_TICK;
+  }
+
+  return BASE_GRAVITY_PER_TICK;
 };
 
 const isInsideConnectedBoards = (
@@ -1022,44 +1078,82 @@ export const stepSession = (
     evaluateTopologyChanges(advancePlayerLifecycle(session)),
   );
   const spawned = ensureSpawnedPieces(topologyReadySession);
-  const actions: PieceAction[] = [];
+  const failedPieceIds = new Set<string>();
   const hardDropPieceIds: string[] = [];
   const connectedBoardIndexes = new Set(
     spawned.players
       .filter((player) => player.connected && isRingRole(player.role) && spawned.ringOrder.includes(player.playerId))
       .map((player) => player.playerIndex),
   );
+  const inputQueues = new Map(
+    spawned.players.map((player) => [
+      player.playerId,
+      clampInputsForTick([...(spawned.pendingInputs[player.playerId] ?? [])]),
+    ]),
+  );
+  const gravityRateByPlayerId = new Map(
+    spawned.players.map((player) => [
+      player.playerId,
+      getGravityRateForInputs(inputQueues.get(player.playerId) ?? []),
+    ]),
+  );
+  const maxInputCount = Math.max(0, ...[...inputQueues.values()].map((inputs) => inputs.length));
+  let worldAfterInputs = spawned.world;
 
-  for (const player of spawned.players) {
-    const piece = getPlayerActivePiece(spawned.world, player.playerId);
+  for (let round = 0; round < maxInputCount; round += 1) {
+    const actions: PieceAction[] = [];
 
-    if (!piece) {
-      continue;
-    }
+    for (const player of spawned.players) {
+      const piece = getPlayerActivePiece(worldAfterInputs, player.playerId);
 
-    const input = spawned.pendingInputs[player.playerId]?.at(-1);
-    if (input) {
+      if (!piece) {
+        continue;
+      }
+
+      const input = inputQueues.get(player.playerId)?.[round];
+
+      if (!input) {
+        continue;
+      }
+
+      if (input === "down" || input === "up") {
+        continue;
+      }
+
       const candidate = applyInputToPiece(piece, input);
 
       if (
         !crossesBlockedEdge(spawned, player, piece, input) &&
-        isInsideConnectedBoards(spawned.world, candidate, connectedBoardIndexes) &&
+        isInsideConnectedBoards(worldAfterInputs, candidate, connectedBoardIndexes) &&
         canOccupyCandidateBoards(spawned, player, piece, candidate, input) &&
         !entersPendingBoard(spawned, piece, candidate)
       ) {
         if (input === "drop") {
-          hardDropPieceIds.push(piece.id);
-        } else {
-          actions.push(inputToAction(piece.id, input));
+          if (!hardDropPieceIds.includes(piece.id)) {
+            hardDropPieceIds.push(piece.id);
+          }
+          continue;
         }
+
+        actions.push(inputToAction(piece.id, input));
       }
+    }
+
+    if (actions.length === 0) {
+      continue;
+    }
+
+    const actionResult = applyWorldActions(worldAfterInputs, actions);
+    worldAfterInputs = actionResult.world;
+
+    for (const pieceId of actionResult.failedPieceIds) {
+      failedPieceIds.add(pieceId);
     }
   }
 
-  const actionResult = tickWorld(spawned.world, actions);
-  let worldAfterDrops = actionResult.world;
-  let lockedPieceIds = [...actionResult.lockedPieceIds];
-  let clearedRowsByPlayer = actionResult.clearedRowsByPlayer;
+  let worldAfterDrops = worldAfterInputs;
+  let lockedPieceIds: string[] = [];
+  let clearedRowsByPlayer = createEmptyClearRows(worldAfterDrops.playerCount);
 
   for (const dropPieceId of hardDropPieceIds) {
     const dropped = hardDropCarriedPieces(worldAfterDrops, dropPieceId);
@@ -1068,22 +1162,96 @@ export const stepSession = (
     clearedRowsByPlayer = mergeClearedRows(clearedRowsByPlayer, dropped.clearedRowsByPlayer);
   }
 
-  const gravityResult = tickWorld(
-    worldAfterDrops,
-    worldAfterDrops.activePieces.map((piece) => ({
-      pieceId: piece.id,
-      kind: "move" as const,
-      dx: 0,
-      dy: 1,
-    })),
-  );
+  let gravityWorld = worldAfterDrops;
+  let gravityLockedPieceIds: string[] = [];
+  let gravityFailedPieceIds: string[] = [];
+  let gravityClearedRows = createEmptyClearRows(worldAfterDrops.playerCount);
+  let nextPlayers = spawned.players.map((player) => {
+    if (!player.connected || !isPlayingRole(player.role)) {
+      return { ...player, gravityMeter: 0 };
+    }
+
+    const piece = getPlayerActivePiece(gravityWorld, player.playerId);
+
+    if (!piece) {
+      return { ...player, gravityMeter: 0 };
+    }
+
+    return {
+      ...player,
+      gravityMeter: player.gravityMeter + (gravityRateByPlayerId.get(player.playerId) ?? BASE_GRAVITY_PER_TICK),
+    };
+  });
+
+  while (true) {
+    const fallingPlayerIds = nextPlayers
+      .filter((player) => {
+        if (!player.connected || !isPlayingRole(player.role)) {
+          return false;
+        }
+
+        const piece = getPlayerActivePiece(gravityWorld, player.playerId);
+
+        if (!piece) {
+          return false;
+        }
+
+        return player.gravityMeter >= 1;
+      })
+      .map((player) => player.playerId);
+
+    if (fallingPlayerIds.length === 0) {
+      break;
+    }
+
+    const gravityStep = tickWorld(
+      gravityWorld,
+      gravityWorld.activePieces
+        .filter((piece) => fallingPlayerIds.includes(piece.ownerId))
+        .map((piece) => ({
+          pieceId: piece.id,
+          kind: "move" as const,
+          dx: 0,
+          dy: 1,
+        })),
+    );
+
+    gravityWorld = gravityStep.world;
+    gravityLockedPieceIds = [...new Set([...gravityLockedPieceIds, ...gravityStep.lockedPieceIds])].sort();
+    gravityFailedPieceIds = [...new Set([...gravityFailedPieceIds, ...gravityStep.failedPieceIds])].sort();
+    gravityClearedRows = mergeClearedRows(gravityClearedRows, gravityStep.clearedRowsByPlayer);
+    nextPlayers = nextPlayers.map((player) =>
+      fallingPlayerIds.includes(player.playerId)
+        ? {
+            ...player,
+            gravityMeter: Math.max(0, player.gravityMeter - 1),
+          }
+        : player,
+    );
+  }
+
+  nextPlayers = nextPlayers.map((player) => {
+    if (!player.connected || !isPlayingRole(player.role)) {
+      return { ...player, gravityMeter: 0 };
+    }
+
+    const piece = getPlayerActivePiece(gravityWorld, player.playerId);
+
+    if (!piece) {
+      return { ...player, gravityMeter: 0 };
+    }
+
+    return player;
+  });
+
+  const nextTick = spawned.tick + 1;
   const result: TickResult = {
-    world: gravityResult.world,
-    failedPieceIds: actionResult.failedPieceIds,
-    lockedPieceIds: [...new Set([...lockedPieceIds, ...gravityResult.lockedPieceIds])].sort(),
-    clearedRowsByPlayer: mergeClearedRows(clearedRowsByPlayer, gravityResult.clearedRowsByPlayer),
+    world: gravityWorld,
+    failedPieceIds: [...new Set([...failedPieceIds, ...gravityFailedPieceIds])].sort(),
+    lockedPieceIds: [...new Set([...lockedPieceIds, ...gravityLockedPieceIds])].sort(),
+    clearedRowsByPlayer: mergeClearedRows(clearedRowsByPlayer, gravityClearedRows),
   };
-  const nextPlayers = spawned.players.map((player) => {
+  nextPlayers = nextPlayers.map((player) => {
     const cleared = result.clearedRowsByPlayer[player.playerIndex]?.length ?? 0;
     return {
       ...player,
@@ -1094,7 +1262,7 @@ export const stepSession = (
 
   return {
     session: {
-      tick: spawned.tick + 1,
+      tick: nextTick,
       world: result.world,
       players: nextPlayers,
       ringOrder: spawned.ringOrder,
@@ -1181,7 +1349,10 @@ export const startHttpServer = (
     }
 
     if (request.method === "POST" && requestUrl.pathname === "/api/join") {
-      const joined = joinSession(session);
+      const body = (await readJsonBody(request)) as {
+        name?: string;
+      };
+      const joined = joinSession(session, body.name);
       session = joined.session;
 
       if (!joined.player) {

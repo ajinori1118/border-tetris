@@ -1,5 +1,7 @@
 export const PLAYER_WIDTH = 10;
-export const PLAYER_HEIGHT = 20;
+export const GAME_OVER_LINE_Y = 4;
+export const PLAYFIELD_HEIGHT = 20;
+export const PLAYER_HEIGHT = GAME_OVER_LINE_Y + PLAYFIELD_HEIGHT;
 
 export type Rotation = 0 | 1 | 2 | 3;
 export type RotationDirection = -1 | 1;

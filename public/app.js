@@ -1,8 +1,12 @@
 const CELL_SIZE = 28;
 const PREVIEW_CELL_SIZE = 14;
 const PLAYER_WIDTH = 10;
+const GAME_OVER_LINE_Y = 4;
+const PLAYER_NAME_STORAGE_KEY = "border-tetris-player-name";
 const HORIZONTAL_REPEAT_DELAY_MS = 120;
 const HORIZONTAL_REPEAT_INTERVAL_MS = 83;
+const VERTICAL_REPEAT_DELAY_MS = 0;
+const VERTICAL_REPEAT_INTERVAL_MS = 90;
 
 const COLORS = {
   I: "#41c9e2",
@@ -281,7 +285,11 @@ const setOverlay = (title, text, visible) => {
 const getPlayerState = () =>
   appState.snapshot?.players.find((player) => player.playerId === appState.playerId) ?? null;
 
-const getPlayerLabel = (playerId) => {
+const getPlayerLabel = (playerId, displayName) => {
+  if (displayName) {
+    return displayName;
+  }
+
   const match = /player-(\d+)/.exec(playerId);
   return match ? `P${match[1]}` : playerId;
 };
@@ -381,12 +389,16 @@ const updateTopologyDiff = (previousSnapshot, nextSnapshot) => {
   for (const playerId of joinedIds) {
     nextEffects[playerId] = { kind: "join", until: Date.now() + 2200 };
     const player = nextSnapshot.players.find((entry) => entry.playerId === playerId);
-    setTopologyMessage(`${player ? getPlayerLabel(player.playerId) : playerId} joined the ring`);
+    setTopologyMessage(
+      `${player ? getPlayerLabel(player.playerId, player.displayName) : playerId} joined the ring`,
+    );
   }
 
   for (const playerId of leftIds) {
     const player = previousSnapshot.players.find((entry) => entry.playerId === playerId);
-    setTopologyMessage(`${player ? getPlayerLabel(player.playerId) : playerId} left the ring`);
+    setTopologyMessage(
+      `${player ? getPlayerLabel(player.playerId, player.displayName) : playerId} left the ring`,
+    );
   }
 
   appState.boardEffects = nextEffects;
@@ -428,6 +440,53 @@ const drawGrid = (boardStarts, height) => {
   }
 };
 
+const drawDangerZone = (boardStarts) => {
+  const dangerHeight = GAME_OVER_LINE_Y * CELL_SIZE;
+
+  ctx.save();
+
+  for (const startCellX of boardStarts.values()) {
+    const pixelX = startCellX * CELL_SIZE;
+    const gradient = ctx.createLinearGradient(pixelX, 0, pixelX, dangerHeight);
+    gradient.addColorStop(0, "rgba(237, 95, 115, 0.28)");
+    gradient.addColorStop(1, "rgba(237, 95, 115, 0.08)");
+    ctx.fillStyle = gradient;
+    ctx.fillRect(pixelX, 0, PLAYER_WIDTH * CELL_SIZE, dangerHeight);
+  }
+
+  ctx.restore();
+};
+
+const drawGameOverLine = (boardStarts) => {
+  const lineY = GAME_OVER_LINE_Y * CELL_SIZE;
+
+  ctx.save();
+  ctx.setLineDash([8, 6]);
+  ctx.strokeStyle = "rgba(237, 95, 115, 0.9)";
+  ctx.lineWidth = 2;
+
+  for (const startCellX of boardStarts.values()) {
+    const pixelX = startCellX * CELL_SIZE;
+
+    ctx.beginPath();
+    ctx.moveTo(pixelX + 6, lineY);
+    ctx.lineTo(pixelX + PLAYER_WIDTH * CELL_SIZE - 6, lineY);
+    ctx.stroke();
+  }
+
+  ctx.setLineDash([]);
+  ctx.fillStyle = "rgba(255, 220, 220, 0.88)";
+  ctx.font = 'bold 11px "Segoe UI", sans-serif';
+  ctx.textAlign = "left";
+  const firstStart = [...boardStarts.values()][0];
+
+  if (firstStart !== undefined) {
+    ctx.fillText("GAME OVER LINE", firstStart * CELL_SIZE + 10, lineY - 8);
+  }
+
+  ctx.restore();
+};
+
 const drawBoardLabels = (players, ownPlayerId) => {
   ctx.save();
   ctx.font = 'bold 14px "Segoe UI", sans-serif';
@@ -443,6 +502,59 @@ const drawBoardLabels = (players, ownPlayerId) => {
     );
   }
 
+  ctx.restore();
+};
+
+const getPendingChangeForPlayer = (snapshot, playerId) =>
+  snapshot.pendingTopologyChanges.find((change) => change.playerId === playerId) ?? null;
+
+const getBoardStateStyle = (snapshot, player) => {
+  const pendingChange = getPendingChangeForPlayer(snapshot, player.playerId);
+
+  if (pendingChange?.kind === "remove") {
+    return {
+      border: "rgba(255, 176, 92, 0.95)",
+      fill: "rgba(255, 176, 92, 0.14)",
+      label: "PENDING REMOVE",
+    };
+  }
+
+  if (player.role === "dead") {
+    return {
+      border: "rgba(237, 95, 115, 0.95)",
+      fill: "rgba(237, 95, 115, 0.16)",
+      label: "DEAD",
+    };
+  }
+
+  if (player.role === "disconnected") {
+    return {
+      border: "rgba(141, 135, 127, 0.95)",
+      fill: "rgba(141, 135, 127, 0.18)",
+      label: "DISCONNECTED",
+    };
+  }
+
+  return null;
+};
+
+const drawBoardStateOverlay = (displayStart, height, style) => {
+  const pixelX = displayStart * CELL_SIZE;
+  const pixelWidth = PLAYER_WIDTH * CELL_SIZE;
+  const pixelHeight = height * CELL_SIZE;
+
+  ctx.save();
+  ctx.fillStyle = style.fill;
+  ctx.fillRect(pixelX, 0, pixelWidth, pixelHeight);
+  ctx.strokeStyle = style.border;
+  ctx.lineWidth = 3;
+  ctx.strokeRect(pixelX + 2, 2, pixelWidth - 4, pixelHeight - 4);
+  ctx.fillStyle = style.border;
+  ctx.fillRect(pixelX + 8, 28, pixelWidth - 16, 24);
+  ctx.fillStyle = "#15110f";
+  ctx.font = 'bold 12px "Segoe UI", sans-serif';
+  ctx.textAlign = "center";
+  ctx.fillText(style.label, pixelX + pixelWidth / 2, 45);
   ctx.restore();
 };
 
@@ -465,6 +577,19 @@ const drawBoard = () => {
 
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   drawGrid(boardStarts, height);
+  drawDangerZone(boardStarts);
+  drawGameOverLine(boardStarts);
+
+  for (const player of orderedPlayers) {
+    const displayStart = boardStarts.get(player.playerIndex);
+    const stateStyle = getBoardStateStyle(appState.snapshot, player);
+
+    if (displayStart === undefined || !stateStyle) {
+      continue;
+    }
+
+    drawBoardStateOverlay(displayStart, height, stateStyle);
+  }
 
   for (const cell of lockedCells) {
     const boardIndex = Math.floor(cell.x / PLAYER_WIDTH);
@@ -522,7 +647,15 @@ const drawBoard = () => {
   drawBoardLabels(
     orderedPlayers.map((player) => ({
       playerId: player.playerId,
-      label: `${getPlayerLabel(player.playerId)}${player.role === "dead" ? " DEAD" : player.role === "disconnected" ? " OFF" : ""}`,
+      label: `${getPlayerLabel(player.playerId, player.displayName)}${
+        getPendingChangeForPlayer(appState.snapshot, player.playerId)?.kind === "remove"
+          ? " EXIT"
+          : player.role === "dead"
+            ? " DEAD"
+            : player.role === "disconnected"
+              ? " OFF"
+              : ""
+      }`,
       displayStart: boardStarts.get(player.playerIndex) ?? centerBoardStart,
     })),
     appState.playerId,
@@ -594,7 +727,7 @@ const updateHud = () => {
   scoreEl.textContent = String(player?.score ?? 0);
   linesEl.textContent = String(player?.lines ?? 0);
   levelEl.textContent = String(1 + Math.floor((player?.lines ?? 0) / 10));
-  playerEl.textContent = player ? getPlayerLabel(player.playerId) : "-";
+  playerEl.textContent = player ? getPlayerLabel(player.playerId, player.displayName) : "-";
   statusEl.textContent = appState.connected ? "connected" : "connecting";
 
   if (player?.gameOver) {
@@ -666,6 +799,31 @@ const startHorizontalRepeat = (code, input) => {
   };
 };
 
+const startVerticalRepeat = (code, input) => {
+  if (appState.repeatState[code]) {
+    return;
+  }
+
+  sendInput(input);
+  const timeoutId = window.setTimeout(() => {
+    const intervalId = window.setInterval(() => {
+      sendInput(input);
+    }, VERTICAL_REPEAT_INTERVAL_MS);
+    const repeat = appState.repeatState[code];
+
+    if (repeat) {
+      repeat.intervalId = intervalId;
+    } else {
+      window.clearInterval(intervalId);
+    }
+  }, VERTICAL_REPEAT_DELAY_MS);
+
+  appState.repeatState[code] = {
+    timeoutId,
+    intervalId: null,
+  };
+};
+
 const connectEvents = () => {
   if (appState.eventSource) {
     appState.eventSource.close();
@@ -690,7 +848,12 @@ const connectEvents = () => {
 };
 
 const joinGame = async () => {
-  const response = await fetch("/api/join", { method: "POST" });
+  const name = window.sessionStorage.getItem(PLAYER_NAME_STORAGE_KEY) ?? "";
+  const response = await fetch("/api/join", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
 
   if (!response.ok) {
     setOverlay("Room Full", "The room currently has no free player slots.", true);
@@ -724,11 +887,10 @@ document.addEventListener("keydown", (event) => {
   } else if (event.code === "ArrowRight") {
     startHorizontalRepeat(event.code, "right");
   } else if (event.code === "ArrowDown") {
-    if (event.repeat) {
-      return;
-    }
-    sendInput("down");
-  } else if (event.code === "ArrowUp" || event.code === "KeyX") {
+    startVerticalRepeat(event.code, "down");
+  } else if (event.code === "ArrowUp") {
+    startVerticalRepeat(event.code, "up");
+  } else if (event.code === "KeyX") {
     if (event.repeat) {
       return;
     }
@@ -748,7 +910,12 @@ document.addEventListener("keydown", (event) => {
 });
 
 document.addEventListener("keyup", (event) => {
-  if (event.code === "ArrowLeft" || event.code === "ArrowRight") {
+  if (
+    event.code === "ArrowLeft" ||
+    event.code === "ArrowRight" ||
+    event.code === "ArrowDown" ||
+    event.code === "ArrowUp"
+  ) {
     stopHorizontalRepeat(event.code);
   }
 });
@@ -756,6 +923,8 @@ document.addEventListener("keyup", (event) => {
 window.addEventListener("beforeunload", () => {
   stopHorizontalRepeat("ArrowLeft");
   stopHorizontalRepeat("ArrowRight");
+  stopHorizontalRepeat("ArrowDown");
+  stopHorizontalRepeat("ArrowUp");
 
   if (!appState.playerId) {
     return;

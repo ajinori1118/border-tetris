@@ -139,6 +139,21 @@ const resolveActions = (
   };
 };
 
+export const applyWorldActions = (
+  world: World,
+  actions: PieceAction[],
+): { world: World; failedPieceIds: string[] } => {
+  const { pieces, failedPieceIds } = resolveActions(world, actions);
+
+  return {
+    world: {
+      ...world,
+      activePieces: pieces,
+    },
+    failedPieceIds,
+  };
+};
+
 const clearLinesByPlayer = (
   lockedCells: LockedCell[],
   playerCount: number,
@@ -258,11 +273,7 @@ export const lockGroundedPieces = (
 };
 
 export const tickWorld = (world: World, actions: PieceAction[]): TickResult => {
-  const { pieces, failedPieceIds } = resolveActions(world, actions);
-  const movedWorld: World = {
-    ...world,
-    activePieces: pieces,
-  };
+  const { world: movedWorld, failedPieceIds } = applyWorldActions(world, actions);
   const { world: lockedWorld, lockedPieceIds } = lockGroundedPieces(movedWorld);
   const { world: clearedWorld, clearedRowsByPlayer } = applyLineClears(lockedWorld);
 
