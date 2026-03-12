@@ -274,16 +274,28 @@ const appState = {
   topologyMessageUntil: 0,
   boardEffects: {},
   repeatState: {},
+  mode: document.body.dataset.mode === "spectate" ? "spectate" : "player",
+};
+
+const setText = (element, value) => {
+  if (element) {
+    element.textContent = value;
+  }
 };
 
 const setOverlay = (title, text, visible) => {
-  overlayTitleEl.textContent = title;
-  overlayTextEl.textContent = text;
-  overlayEl.classList.toggle("hidden", !visible);
+  setText(overlayTitleEl, title);
+  setText(overlayTextEl, text);
+  overlayEl?.classList.toggle("hidden", !visible);
 };
 
 const getPlayerState = () =>
   appState.snapshot?.players.find((player) => player.playerId === appState.playerId) ?? null;
+
+const getPrimaryPlayerState = () =>
+  getPlayerState() ??
+  appState.snapshot?.players.find((player) => appState.snapshot?.ringOrder.includes(player.playerId)) ??
+  null;
 
 const getPlayerLabel = (playerId, displayName) => {
   if (displayName) {
@@ -691,7 +703,7 @@ const drawBoard = () => {
 
 const drawNext = () => {
   nextCtx.clearRect(0, 0, nextCanvas.width, nextCanvas.height);
-  const player = getPlayerState();
+  const player = appState.mode === "spectate" ? getPrimaryPlayerState() : getPlayerState();
 
   if (!player) {
     return;
@@ -724,23 +736,33 @@ const drawNext = () => {
 const updateHud = () => {
   const player = getPlayerState();
 
-  scoreEl.textContent = String(player?.score ?? 0);
-  linesEl.textContent = String(player?.lines ?? 0);
-  levelEl.textContent = String(1 + Math.floor((player?.lines ?? 0) / 10));
-  playerEl.textContent = player ? getPlayerLabel(player.playerId, player.displayName) : "-";
-  statusEl.textContent = appState.connected ? "connected" : "connecting";
+  if (appState.mode === "spectate") {
+    setText(scoreEl, "-");
+    setText(linesEl, "-");
+    setText(levelEl, "-");
+    setText(playerEl, "Spectator");
+    setText(statusEl, appState.connected ? "watching" : "connecting");
+  } else {
+    setText(scoreEl, String(player?.score ?? 0));
+    setText(linesEl, String(player?.lines ?? 0));
+    setText(levelEl, String(1 + Math.floor((player?.lines ?? 0) / 10)));
+    setText(playerEl, player ? getPlayerLabel(player.playerId, player.displayName) : "-");
+    setText(statusEl, appState.connected ? "connected" : "connecting");
+  }
 
-  if (player?.gameOver) {
+  if (appState.mode === "spectate") {
+    setOverlay("越境テトリス", "Watching current session", false);
+  } else if (player?.gameOver) {
     setOverlay("Game Over", "Waiting for board reset...", true);
   } else {
-    setOverlay("Border Tetris", "Shared world view", false);
+    setOverlay("越境テトリス", "Shared world view", false);
   }
 
   if (Date.now() < appState.topologyMessageUntil) {
-    topologyEventEl.textContent = appState.topologyMessage;
-    topologyEventEl.classList.remove("hidden");
+    setText(topologyEventEl, appState.topologyMessage);
+    topologyEventEl?.classList.remove("hidden");
   } else {
-    topologyEventEl.classList.add("hidden");
+    topologyEventEl?.classList.add("hidden");
   }
 };
 
@@ -867,8 +889,13 @@ const joinGame = async () => {
   render();
 };
 
+const startSpectating = () => {
+  connectEvents();
+  render();
+};
+
 document.addEventListener("keydown", (event) => {
-  if (!appState.connected) {
+  if (!appState.connected || appState.mode === "spectate") {
     return;
   }
 
@@ -943,4 +970,9 @@ window.addEventListener("resize", () => {
 });
 
 setOverlay("Connecting", "Joining session...", true);
-joinGame();
+
+if (appState.mode === "spectate") {
+  startSpectating();
+} else {
+  joinGame();
+}

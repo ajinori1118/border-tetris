@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>越境テトリス Spectate</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body data-mode="spectate">
+    <main class="game-page">
+      <section class="panel game game-only">
+        <div class="game-topbar">
+          <div class="hud hud-compact">
+            <div>
+              <span class="label">Player</span>
+              <strong id="player">Spectator</strong>
+            </div>
+            <div>
+              <span class="label">Score</span>
+              <strong id="score">-</strong>
+            </div>
+            <div>
+              <span class="label">Lines</span>
+              <strong id="lines">-</strong>
+            </div>
+            <div>
+              <span class="label">Level</span>
+              <strong id="level">-</strong>
+            </div>
+            <div>
+              <span class="label">Status</span>
+              <strong id="status">watching</strong>
+            </div>
+          </div>
+          <div class="next-box">
+            <span class="label">Next</span>
+            <canvas id="next" width="88" height="88" aria-label="next piece"></canvas>
+          </div>
+        </div>
+        <div id="topology-event" class="topology-event hidden" aria-live="polite"></div>
+        <canvas id="game" width="320" height="640" aria-label="tetris board"></canvas>
+        <div id="overlay" class="overlay hidden">
+          <div>
+            <h2 id="overlay-title">Spectate</h2>
+            <p id="overlay-text">Watching current session.</p>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <script src="/app.js"></script>
+  </body>
+</html>

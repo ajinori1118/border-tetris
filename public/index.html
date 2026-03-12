@@ -3,17 +3,19 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Border Tetris Lobby</title>
+    <title>越境テトリス Lobby</title>
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
     <main class="layout lobby-layout">
       <section class="panel hero lobby-panel">
         <p class="eyebrow">Lobby</p>
-        <h1>Border Tetris</h1>
+        <h1>越境テトリス</h1>
         <p class="lead">
-          プレイヤーネームを決めてゲームに参加します。多人数リングの動作確認用に、
-          まずは名前を付けてプレイ画面へ入る最小構成です。
+          他プレイヤーの領域にミノを落とせる多人数参加型テトリスです。
+        </p>
+        <p class="lobby-count">
+          参加中: <strong id="active-count">0</strong> / <span id="max-count">0</span>
         </p>
         <form id="lobby-form" class="lobby-form">
           <label class="label" for="player-name">Player Name</label>
@@ -27,6 +29,7 @@
             autocomplete="nickname"
           />
           <button type="submit">Join Game</button>
+          <a class="button-link" href="/spectate.html">Spectate</a>
         </form>
       </section>
 

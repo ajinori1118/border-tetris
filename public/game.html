@@ -3,43 +3,12 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Border Tetris</title>
+    <title>越境テトリス</title>
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
-    <main class="layout">
-      <section class="panel hero">
-        <p class="eyebrow">Prototype</p>
-        <h1>Border Tetris</h1>
-        <p class="lead">
-          共有 world を使う多人数テトリスの試作です。まずはサーバー側の挙動を優先し、
-          クライアントは状態確認しやすい最小表示にしています。
-        </p>
-        <div class="hud">
-          <div>
-            <span class="label">Score</span>
-            <strong id="score">0</strong>
-          </div>
-          <div>
-            <span class="label">Lines</span>
-            <strong id="lines">0</strong>
-          </div>
-          <div>
-            <span class="label">Level</span>
-            <strong id="level">1</strong>
-          </div>
-          <div>
-            <span class="label">Player</span>
-            <strong id="player">-</strong>
-          </div>
-          <div>
-            <span class="label">Status</span>
-            <strong id="status">connecting</strong>
-          </div>
-        </div>
-      </section>
-
-      <section class="panel game">
+    <main class="game-page">
+      <section class="panel game game-only">
         <div class="topbar">
           <div class="next-box">
             <span class="label">Next</span>
@@ -55,20 +24,6 @@
           </div>
         </div>
       </section>
-
-      <aside class="panel side">
-        <div class="controls">
-          <span class="label">Controls</span>
-          <ul>
-            <li>`Left` / `Right`: move</li>
-            <li>`Down`: accelerate fall</li>
-            <li>`Up`: brake fall</li>
-            <li>`X`: rotate right</li>
-            <li>`Z`: rotate left</li>
-            <li>`Space`: hard drop</li>
-          </ul>
-        </div>
-      </aside>
     </main>
 
     <script src="/app.js"></script>

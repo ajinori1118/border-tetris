@@ -78,6 +78,12 @@ export type SessionSnapshot = {
   pendingTopologyChanges: TopologyChange[];
 };
 
+export type SessionInfo = {
+  snapshot: SessionSnapshot;
+  activePlayerCount: number;
+  maxPlayerCount: number;
+};
+
 type SseClient = {
   response: ServerResponse<IncomingMessage>;
 };
@@ -223,6 +229,12 @@ export const getSessionSnapshot = (session: SessionState): SessionSnapshot => ({
   })),
   ringOrder: session.ringOrder,
   pendingTopologyChanges: session.pendingTopologyChanges,
+});
+
+const getSessionInfo = (session: SessionState): SessionInfo => ({
+  snapshot: getSessionSnapshot(session),
+  activePlayerCount: session.ringOrder.length,
+  maxPlayerCount: session.players.length,
 });
 
 export const createSession = (playerCount: number): SessionState => ({
@@ -1345,6 +1357,11 @@ export const startHttpServer = (
 
     if (requestUrl.pathname === "/api/health") {
       sendJson(response, 200, { ok: true });
+      return;
+    }
+
+    if (request.method === "GET" && requestUrl.pathname === "/api/session") {
+      sendJson(response, 200, getSessionInfo(session));
       return;
     }
 

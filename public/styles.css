@@ -227,6 +227,29 @@ button:last-child {
   max-width: 420px;
 }
 
+.lobby-count {
+  margin: 18px 0 0;
+  font-size: 18px;
+}
+
+.lobby-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 24px;
+}
+
+.lobby-card {
+  padding: 16px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.62);
+}
+
+.lobby-card p {
+  margin: 10px 0 0;
+  line-height: 1.6;
+}
+
 .lobby-input {
   width: 100%;
   padding: 14px 16px;
@@ -234,6 +257,39 @@ button:last-child {
   border-radius: 14px;
   background: rgba(255, 255, 255, 0.82);
   font: inherit;
+}
+
+.button-link {
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  border-radius: 999px;
+  padding: 12px 18px;
+  font-weight: 700;
+  text-decoration: none;
+  background: #2f4f6f;
+  color: white;
+}
+
+.game-page {
+  padding: 20px 16px 32px;
+}
+
+.game-only {
+  max-width: none;
+}
+
+.game-topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.hud-compact {
+  flex: 1;
+  margin-top: 0;
 }
 
 @media (max-width: 980px) {
@@ -257,5 +313,14 @@ button:last-child {
   .side {
     grid-column: 1;
     grid-row: 3;
+  }
+
+  .lobby-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .game-topbar {
+    flex-direction: column;
+    align-items: stretch;
   }
 }
