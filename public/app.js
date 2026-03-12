@@ -286,6 +286,11 @@ const getPlayerLabel = (playerId) => {
   return match ? `P${match[1]}` : playerId;
 };
 
+const wrapX = (x, width) => {
+  const wrapped = x % width;
+  return wrapped < 0 ? wrapped + width : wrapped;
+};
+
 const getRingPlayers = (snapshot) =>
   snapshot.ringOrder
     .map((playerId) => snapshot.players.find((player) => player.playerId === playerId) ?? null)
@@ -441,8 +446,10 @@ const drawBoardLabels = (players, ownPlayerId) => {
   ctx.restore();
 };
 
-const getBoardOwner = (players, playerIndex) =>
-  players.find((player) => player.playerIndex === playerIndex) ?? null;
+const getBoardOwner = (snapshot, playerIndex) =>
+  snapshot.ringOrder
+    .map((playerId) => snapshot.players.find((player) => player.playerId === playerId) ?? null)
+    .find((player) => player && player.playerIndex === playerIndex) ?? null;
 
 const drawBoard = () => {
   if (!appState.snapshot) {
@@ -461,7 +468,7 @@ const drawBoard = () => {
 
   for (const cell of lockedCells) {
     const boardIndex = Math.floor(cell.x / PLAYER_WIDTH);
-    const boardOwner = getBoardOwner(appState.snapshot.players, boardIndex);
+    const boardOwner = getBoardOwner(appState.snapshot, boardIndex);
     const displayStart = boardStarts.get(boardIndex);
 
     if (displayStart === undefined) {
@@ -484,7 +491,7 @@ const drawBoard = () => {
 
   for (const piece of activePieces) {
     for (const [x, y] of getRotationCells(piece)) {
-      const worldX = piece.x + x;
+      const worldX = wrapX(piece.x + x, appState.snapshot.world.width);
       const boardIndex = Math.floor(worldX / PLAYER_WIDTH);
       const displayStart = boardStarts.get(boardIndex);
       const drawX =

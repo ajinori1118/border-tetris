@@ -220,7 +220,7 @@ export const createSession = (playerCount: number): SessionState => ({
   },
   players: Array.from({ length: playerCount }, (_, playerIndex) => ({
     playerId: `player-${playerIndex + 1}`,
-    playerIndex,
+    playerIndex: -1,
     score: 0,
     lines: 0,
     nextType: randomPieceType(),
@@ -443,14 +443,16 @@ const applyReadyTopologyChanges = (session: SessionState): SessionState => {
         getWorldPlayerCount(nextRingOrder),
       ),
       ringOrder: nextRingOrder,
-      players: nextSession.players.map((entry) =>
-        entry.playerId === change.playerId
-          ? {
-              ...entry,
-              role: entry.connected ? "spectating" : "spectating",
-              disconnectDeadlineTick: null,
-            }
-          : entry.playerIndex > removedBoardIndex
+        players: nextSession.players.map((entry) =>
+          entry.playerId === change.playerId
+            ? {
+                ...entry,
+                playerIndex: -1,
+                role: "spectating",
+                disconnectDeadlineTick: null,
+                reviveAtTick: null,
+              }
+            : entry.playerIndex > removedBoardIndex
             ? {
                 ...entry,
                 playerIndex: entry.playerIndex - 1,

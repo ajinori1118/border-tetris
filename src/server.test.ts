@@ -507,9 +507,50 @@ test("disconnected players are removed from ringOrder after the grace period", (
   );
   assert.deepEqual(current.ringOrder, ["player-1"]);
   assert.equal(removedPlayer?.role, "spectating");
+  assert.equal(removedPlayer?.playerIndex, -1);
+  assert.deepEqual(
+    current.players
+      .filter((player) => current.ringOrder.includes(player.playerId))
+      .map((player) => player.playerIndex)
+      .sort((left, right) => left - right),
+    [0],
+  );
   assert.equal(
     current.pendingTopologyChanges.some((change) => change.playerId === joinedTwo.player?.playerId),
     false,
+  );
+});
+
+test("removing a middle player compacts remaining ring indexes", () => {
+  let current = createSession(4);
+
+  current = joinSession(current).session;
+  current = joinSession(current).session;
+  current = joinSession(current).session;
+  current = joinSession(current).session;
+  current = {
+    ...leaveSession(current, "player-2"),
+    world: {
+      ...current.world,
+      activePieces: [],
+      lockedCells: [],
+    },
+    pendingInputs: {},
+  };
+
+  for (let index = 0; index < 31; index += 1) {
+    current = stepSession(current).session;
+  }
+
+  assert.deepEqual(current.ringOrder, ["player-1", "player-3", "player-4"]);
+  assert.deepEqual(
+    current.players.map((player) => [player.playerId, player.playerIndex, player.role]),
+    [
+      ["player-1", 0, "playing"],
+      ["player-2", -1, "spectating"],
+      ["player-3", 1, "playing"],
+      ["player-4", 2, "playing"],
+    ],
   );
 });
 
