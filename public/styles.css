@@ -26,12 +26,27 @@ body {
 
 .layout {
   display: grid;
-  grid-template-columns: 300px minmax(0, 1fr) 220px;
+  grid-template-columns: minmax(0, 1fr) 220px;
   gap: 24px;
   align-items: start;
   max-width: none;
   margin: 0 auto;
   padding: 20px 16px 32px;
+}
+
+.hero {
+  grid-column: 1 / 2;
+  grid-row: 2;
+}
+
+.game {
+  grid-column: 1 / 3;
+  grid-row: 1;
+}
+
+.side {
+  grid-column: 2 / 3;
+  grid-row: 2;
 }
 
 .panel {
@@ -130,17 +145,41 @@ button:last-child {
   margin-bottom: 16px;
 }
 
+.topology-event {
+  position: absolute;
+  top: 18px;
+  left: 18px;
+  z-index: 2;
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: rgba(243, 166, 90, 0.18);
+  border: 1px solid rgba(243, 166, 90, 0.45);
+  color: rgba(255, 244, 231, 0.96);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
 #game,
 #next {
   display: block;
   max-width: 100%;
   height: auto;
-  background:
-    linear-gradient(var(--board-grid) 1px, transparent 1px),
-    linear-gradient(90deg, var(--board-grid) 1px, transparent 1px),
-    var(--board);
-  background-size: 32px 32px;
+  background: var(--board);
   border-radius: 18px;
+}
+
+#game {
+  margin: 0 auto;
+}
+
+#next {
+  margin: 8px auto 0;
+}
+
+.next-box {
+  width: 112px;
+  padding: 8px 10px;
 }
 
 .overlay {
@@ -168,7 +207,21 @@ button:last-child {
     grid-template-columns: 1fr;
   }
 
+  .hero,
   .game {
-    order: -1;
+    grid-column: 1;
+  }
+
+  .game {
+    grid-row: 1;
+  }
+
+  .hero {
+    grid-row: 2;
+  }
+
+  .side {
+    grid-column: 1;
+    grid-row: 3;
   }
 }

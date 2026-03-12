@@ -1,4 +1,4 @@
-import { canPlace, isGrounded } from "./collision";
+import { canPlace } from "./collision";
 import { getPieceCells } from "./piece";
 import {
   Cell,
@@ -14,6 +14,9 @@ import {
 const toKey = ({ x, y }: Cell): string => `${x},${y}`;
 
 const sortNumbersAscending = (left: number, right: number): number => left - right;
+
+const buildLockedCellSet = (world: World): Set<string> =>
+  new Set(world.lockedCells.map((cell) => toKey(cell)));
 
 const buildLockedOnlyWorld = (world: World): World => ({
   ...world,
@@ -193,11 +196,39 @@ const clearLinesByPlayer = (
   };
 };
 
+export const applyLineClears = (
+  world: World,
+): { world: World; clearedRowsByPlayer: number[][] } => {
+  const { lockedCells, clearedRowsByPlayer } = clearLinesByPlayer(
+    world.lockedCells,
+    world.playerCount,
+  );
+
+  return {
+    world: {
+      ...world,
+      lockedCells,
+    },
+    clearedRowsByPlayer,
+  };
+};
+
 export const lockGroundedPieces = (
   world: World,
 ): { world: World; lockedPieceIds: string[] } => {
+  const lockedCellSet = buildLockedCellSet(world);
   const lockedPieceIds = world.activePieces
-    .filter((piece) => isGrounded(piece, world))
+    .filter((piece) =>
+      getPieceCells(piece, world.width).some((cell) => {
+        const nextY = cell.y + 1;
+
+        if (nextY >= world.height) {
+          return true;
+        }
+
+        return lockedCellSet.has(toKey({ x: cell.x, y: nextY }));
+      }),
+    )
     .map((piece) => piece.id)
     .sort();
 
@@ -233,16 +264,10 @@ export const tickWorld = (world: World, actions: PieceAction[]): TickResult => {
     activePieces: pieces,
   };
   const { world: lockedWorld, lockedPieceIds } = lockGroundedPieces(movedWorld);
-  const { lockedCells, clearedRowsByPlayer } = clearLinesByPlayer(
-    lockedWorld.lockedCells,
-    lockedWorld.playerCount,
-  );
+  const { world: clearedWorld, clearedRowsByPlayer } = applyLineClears(lockedWorld);
 
   return {
-    world: {
-      ...lockedWorld,
-      lockedCells,
-    },
+    world: clearedWorld,
     failedPieceIds,
     lockedPieceIds,
     clearedRowsByPlayer,

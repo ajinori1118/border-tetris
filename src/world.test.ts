@@ -68,7 +68,7 @@ test("tickWorld clears lines independently for each player board", () => {
   assert.deepEqual(lockedKeys, ["0,19", "10,19"]);
 });
 
-test("tickWorld locks a piece when it is grounded on another active piece", () => {
+test("tickWorld does not lock a piece when it is resting on another active piece", () => {
   const world = createWorld({
     activePieces: [
       createPiece({ id: "top", x: 4, y: 15 }),
@@ -78,17 +78,13 @@ test("tickWorld locks a piece when it is grounded on another active piece", () =
 
   const result = tickWorld(world, []);
 
-  assert.deepEqual(result.lockedPieceIds, ["top"]);
-  assert.deepEqual(result.world.activePieces.map((piece) => piece.id), ["bottom"]);
-  assert.equal(result.world.lockedCells.length, 4);
+  assert.deepEqual(result.lockedPieceIds, []);
   assert.deepEqual(
-    result.world.lockedCells.map((cell) => ({
-      ownerId: cell.ownerId,
-      pieceType: cell.pieceType,
-    })),
-    Array.from({ length: 4 }, () => ({
-      ownerId: "player-1",
-      pieceType: "O",
-    })),
+    result.world.activePieces.map((piece) => ({ id: piece.id, y: piece.y })),
+    [
+      { id: "top", y: 15 },
+      { id: "bottom", y: 17 },
+    ],
   );
+  assert.equal(result.world.lockedCells.length, 0);
 });

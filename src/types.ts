@@ -4,6 +4,9 @@ export const PLAYER_HEIGHT = 20;
 export type Rotation = 0 | 1 | 2 | 3;
 export type RotationDirection = -1 | 1;
 export type PieceType = "I" | "O" | "T" | "S" | "Z" | "J" | "L";
+export type PlayerRole = "playing" | "dead" | "disconnected" | "spectating";
+export type TopologyChangeKind = "add" | "remove";
+export type TopologyChangeStatus = "pending" | "blocked" | "ready";
 
 export type Cell = {
   x: number;
@@ -55,6 +58,17 @@ export type TickResult = {
   lockedPieceIds: string[];
   clearedRowsByPlayer: number[][];
 };
+
+export type TopologyChange = {
+  id: string;
+  kind: TopologyChangeKind;
+  playerId: string;
+  scheduledAtTick: number;
+  status: TopologyChangeStatus;
+  reason?: string;
+};
+
+export type RingOrder = string[];
 
 export const createWorldSize = (playerCount: number) => ({
   playerCount,

@@ -1,6 +1,8 @@
 const CELL_SIZE = 28;
-const PREVIEW_CELL_SIZE = 28;
+const PREVIEW_CELL_SIZE = 14;
 const PLAYER_WIDTH = 10;
+const HORIZONTAL_REPEAT_DELAY_MS = 120;
+const HORIZONTAL_REPEAT_INTERVAL_MS = 83;
 
 const COLORS = {
   I: "#41c9e2",
@@ -14,7 +16,7 @@ const COLORS = {
 
 const FOREIGN_LOCKED_COLOR = "#8d877f";
 
-const SHAPES = {
+const PREVIEW_SHAPES = {
   I: [
     [-1, 0],
     [0, 0],
@@ -59,11 +61,197 @@ const SHAPES = {
   ],
 };
 
+const PIECE_LAYOUTS = {
+  I: {
+    0: [
+      [-1, 0],
+      [0, 0],
+      [1, 0],
+      [2, 0],
+    ],
+    1: [
+      [1, -1],
+      [1, 0],
+      [1, 1],
+      [1, 2],
+    ],
+    2: [
+      [-1, 0],
+      [0, 0],
+      [1, 0],
+      [2, 0],
+    ],
+    3: [
+      [1, -1],
+      [1, 0],
+      [1, 1],
+      [1, 2],
+    ],
+  },
+  O: {
+    0: [
+      [0, 0],
+      [1, 0],
+      [0, 1],
+      [1, 1],
+    ],
+    1: [
+      [0, 0],
+      [1, 0],
+      [0, 1],
+      [1, 1],
+    ],
+    2: [
+      [0, 0],
+      [1, 0],
+      [0, 1],
+      [1, 1],
+    ],
+    3: [
+      [0, 0],
+      [1, 0],
+      [0, 1],
+      [1, 1],
+    ],
+  },
+  T: {
+    0: [
+      [-1, 0],
+      [0, 0],
+      [1, 0],
+      [0, -1],
+    ],
+    1: [
+      [0, -1],
+      [0, 0],
+      [0, 1],
+      [1, 0],
+    ],
+    2: [
+      [-1, 0],
+      [0, 0],
+      [1, 0],
+      [0, 1],
+    ],
+    3: [
+      [0, -1],
+      [0, 0],
+      [0, 1],
+      [-1, 0],
+    ],
+  },
+  S: {
+    0: [
+      [0, 0],
+      [1, 0],
+      [-1, 1],
+      [0, 1],
+    ],
+    1: [
+      [0, -1],
+      [0, 0],
+      [1, 0],
+      [1, 1],
+    ],
+    2: [
+      [0, 0],
+      [1, 0],
+      [-1, 1],
+      [0, 1],
+    ],
+    3: [
+      [0, -1],
+      [0, 0],
+      [1, 0],
+      [1, 1],
+    ],
+  },
+  Z: {
+    0: [
+      [-1, 0],
+      [0, 0],
+      [0, 1],
+      [1, 1],
+    ],
+    1: [
+      [1, -1],
+      [0, 0],
+      [1, 0],
+      [0, 1],
+    ],
+    2: [
+      [-1, 0],
+      [0, 0],
+      [0, 1],
+      [1, 1],
+    ],
+    3: [
+      [1, -1],
+      [0, 0],
+      [1, 0],
+      [0, 1],
+    ],
+  },
+  J: {
+    0: [
+      [-1, -1],
+      [-1, 0],
+      [0, 0],
+      [1, 0],
+    ],
+    1: [
+      [0, -1],
+      [1, -1],
+      [0, 0],
+      [0, 1],
+    ],
+    2: [
+      [-1, 0],
+      [0, 0],
+      [1, 0],
+      [1, 1],
+    ],
+    3: [
+      [0, -1],
+      [0, 0],
+      [-1, 1],
+      [0, 1],
+    ],
+  },
+  L: {
+    0: [
+      [1, -1],
+      [-1, 0],
+      [0, 0],
+      [1, 0],
+    ],
+    1: [
+      [0, -1],
+      [0, 0],
+      [0, 1],
+      [1, 1],
+    ],
+    2: [
+      [-1, 0],
+      [0, 0],
+      [1, 0],
+      [-1, 1],
+    ],
+    3: [
+      [-1, -1],
+      [0, -1],
+      [0, 0],
+      [0, 1],
+    ],
+  },
+};
+
 const scoreEl = document.getElementById("score");
 const linesEl = document.getElementById("lines");
 const levelEl = document.getElementById("level");
 const statusEl = document.getElementById("status");
 const playerEl = document.getElementById("player");
+const topologyEventEl = document.getElementById("topology-event");
 const overlayEl = document.getElementById("overlay");
 const overlayTitleEl = document.getElementById("overlay-title");
 const overlayTextEl = document.getElementById("overlay-text");
@@ -78,6 +266,10 @@ const appState = {
   snapshot: null,
   connected: false,
   eventSource: null,
+  topologyMessage: "",
+  topologyMessageUntil: 0,
+  boardEffects: {},
+  repeatState: {},
 };
 
 const setOverlay = (title, text, visible) => {
@@ -89,15 +281,113 @@ const setOverlay = (title, text, visible) => {
 const getPlayerState = () =>
   appState.snapshot?.players.find((player) => player.playerId === appState.playerId) ?? null;
 
-const getRotationCells = (piece) => {
-  let cells = SHAPES[piece.type].map(([x, y]) => [x, y]);
+const getPlayerLabel = (playerId) => {
+  const match = /player-(\d+)/.exec(playerId);
+  return match ? `P${match[1]}` : playerId;
+};
 
-  for (let turn = 0; turn < piece.rotation; turn += 1) {
-    cells = cells.map(([x, y]) => [-y, x]);
+const getRingPlayers = (snapshot) =>
+  snapshot.ringOrder
+    .map((playerId) => snapshot.players.find((player) => player.playerId === playerId) ?? null)
+    .filter((player) => player !== null);
+
+const getBoardLayout = (snapshot, ownPlayerId) => {
+  const ownPlayer =
+    snapshot.players.find((player) => player.playerId === ownPlayerId) ?? getRingPlayers(snapshot)[0] ?? null;
+
+  if (!ownPlayer) {
+    return { orderedPlayers: [], boardStarts: new Map() };
   }
 
-  return cells;
+  const ringPlayers = getRingPlayers(snapshot);
+  const leftPlayers = [];
+  const rightPlayers = [];
+  const seenIds = new Set([ownPlayer.playerId]);
+  let leftCursor = ownPlayer.leftNeighbor;
+  let rightCursor = ownPlayer.rightNeighbor;
+
+  while (seenIds.size < ringPlayers.length) {
+    if (leftCursor && !seenIds.has(leftCursor)) {
+      const player = snapshot.players.find((entry) => entry.playerId === leftCursor);
+
+      if (player) {
+        leftPlayers.push(player);
+        seenIds.add(player.playerId);
+        leftCursor = player.leftNeighbor;
+      } else {
+        leftCursor = null;
+      }
+    } else {
+      leftCursor = null;
+    }
+
+    if (seenIds.size >= ringPlayers.length) {
+      break;
+    }
+
+    if (rightCursor && !seenIds.has(rightCursor)) {
+      const player = snapshot.players.find((entry) => entry.playerId === rightCursor);
+
+      if (player) {
+        rightPlayers.push(player);
+        seenIds.add(player.playerId);
+        rightCursor = player.rightNeighbor;
+      } else {
+        rightCursor = null;
+      }
+    } else {
+      rightCursor = null;
+    }
+
+    if (!leftCursor && !rightCursor) {
+      break;
+    }
+  }
+
+  const fallbackPlayers = ringPlayers.filter((player) => !seenIds.has(player.playerId));
+  const orderedPlayers = [...leftPlayers.slice().reverse(), ownPlayer, ...rightPlayers, ...fallbackPlayers];
+  const ownPosition = orderedPlayers.findIndex((player) => player.playerId === ownPlayer.playerId);
+  const centerBoardStart = Math.floor(canvas.width / CELL_SIZE / 2 - PLAYER_WIDTH / 2);
+  const boardStarts = new Map();
+
+  orderedPlayers.forEach((player, index) => {
+    boardStarts.set(player.playerIndex, centerBoardStart + (index - ownPosition) * PLAYER_WIDTH);
+  });
+
+  return { orderedPlayers, boardStarts };
 };
+
+const setTopologyMessage = (message) => {
+  appState.topologyMessage = message;
+  appState.topologyMessageUntil = Date.now() + 2200;
+};
+
+const updateTopologyDiff = (previousSnapshot, nextSnapshot) => {
+  if (!previousSnapshot || !nextSnapshot) {
+    return;
+  }
+
+  const previousRing = previousSnapshot.ringOrder ?? [];
+  const nextRing = nextSnapshot.ringOrder ?? [];
+  const joinedIds = nextRing.filter((playerId) => !previousRing.includes(playerId));
+  const leftIds = previousRing.filter((playerId) => !nextRing.includes(playerId));
+  const nextEffects = { ...appState.boardEffects };
+
+  for (const playerId of joinedIds) {
+    nextEffects[playerId] = { kind: "join", until: Date.now() + 2200 };
+    const player = nextSnapshot.players.find((entry) => entry.playerId === playerId);
+    setTopologyMessage(`${player ? getPlayerLabel(player.playerId) : playerId} joined the ring`);
+  }
+
+  for (const playerId of leftIds) {
+    const player = previousSnapshot.players.find((entry) => entry.playerId === playerId);
+    setTopologyMessage(`${player ? getPlayerLabel(player.playerId) : playerId} left the ring`);
+  }
+
+  appState.boardEffects = nextEffects;
+};
+
+const getRotationCells = (piece) => PIECE_LAYOUTS[piece.type][piece.rotation];
 
 const drawCell = (context, x, y, color, size) => {
   context.fillStyle = color;
@@ -111,9 +401,10 @@ const setCanvasSize = () => {
     return;
   }
 
+  const visibleBoardCount = Math.max(appState.snapshot.ringOrder.length, 1);
   canvas.width = Math.max(
     window.innerWidth - 720,
-    appState.snapshot.world.playerCount * PLAYER_WIDTH * CELL_SIZE,
+    visibleBoardCount * PLAYER_WIDTH * CELL_SIZE,
     PLAYER_WIDTH * CELL_SIZE * 3,
   );
   canvas.height = appState.snapshot.world.height * CELL_SIZE;
@@ -158,18 +449,12 @@ const drawBoard = () => {
     return;
   }
 
-  const { playerCount, height, lockedCells, activePieces } = appState.snapshot.world;
+  const { height, lockedCells, activePieces } = appState.snapshot.world;
   const ownPlayer = getPlayerState();
-  const ownIndex = ownPlayer?.playerIndex ?? 0;
 
   setCanvasSize();
   const centerBoardStart = Math.floor(canvas.width / CELL_SIZE / 2 - PLAYER_WIDTH / 2);
-  const boardStarts = new Map();
-
-  for (let boardIndex = 0; boardIndex < playerCount; boardIndex += 1) {
-    const relativeIndex = boardIndex - ownIndex;
-    boardStarts.set(boardIndex, centerBoardStart + relativeIndex * PLAYER_WIDTH);
-  }
+  const { orderedPlayers, boardStarts } = getBoardLayout(appState.snapshot, appState.playerId);
 
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   drawGrid(boardStarts, height);
@@ -228,13 +513,40 @@ const drawBoard = () => {
   }
 
   drawBoardLabels(
-    appState.snapshot.players.map((player) => ({
+    orderedPlayers.map((player) => ({
       playerId: player.playerId,
-      label: `P${player.playerIndex + 1}`,
+      label: `${getPlayerLabel(player.playerId)}${player.role === "dead" ? " DEAD" : player.role === "disconnected" ? " OFF" : ""}`,
       displayStart: boardStarts.get(player.playerIndex) ?? centerBoardStart,
     })),
     appState.playerId,
   );
+
+  const now = Date.now();
+  appState.boardEffects = Object.fromEntries(
+    Object.entries(appState.boardEffects).filter(([, effect]) => effect.until > now),
+  );
+
+  for (const player of orderedPlayers) {
+    const effect = appState.boardEffects[player.playerId];
+    const displayStart = boardStarts.get(player.playerIndex);
+
+    if (!effect || displayStart === undefined) {
+      continue;
+    }
+
+    const alpha = Math.max(0, (effect.until - now) / 2200);
+    ctx.strokeStyle =
+      effect.kind === "join"
+        ? `rgba(243,166,90,${0.25 + alpha * 0.6})`
+        : `rgba(141,135,127,${0.2 + alpha * 0.4})`;
+    ctx.lineWidth = 6;
+    ctx.strokeRect(
+      displayStart * CELL_SIZE + 4,
+      4,
+      PLAYER_WIDTH * CELL_SIZE - 8,
+      height * CELL_SIZE - 8,
+    );
+  }
 };
 
 const drawNext = () => {
@@ -245,8 +557,27 @@ const drawNext = () => {
     return;
   }
 
-  for (const [x, y] of SHAPES[player.nextType]) {
-    drawCell(nextCtx, x + 2, y + 2, COLORS[player.nextType], PREVIEW_CELL_SIZE);
+  const cells = PREVIEW_SHAPES[player.nextType];
+  const centroid = cells.reduce(
+    (accumulator, [x, y]) => ({
+      x: accumulator.x + x,
+      y: accumulator.y + y,
+    }),
+    { x: 0, y: 0 },
+  );
+  const centerX = centroid.x / cells.length;
+  const centerY = centroid.y / cells.length;
+  const previewCenterX = nextCanvas.width / 2 / PREVIEW_CELL_SIZE;
+  const previewCenterY = nextCanvas.height / 2 / PREVIEW_CELL_SIZE;
+
+  for (const [x, y] of cells) {
+    drawCell(
+      nextCtx,
+      previewCenterX + (x - centerX) - 0.5,
+      previewCenterY + (y - centerY) - 0.5,
+      COLORS[player.nextType],
+      PREVIEW_CELL_SIZE,
+    );
   }
 };
 
@@ -256,13 +587,20 @@ const updateHud = () => {
   scoreEl.textContent = String(player?.score ?? 0);
   linesEl.textContent = String(player?.lines ?? 0);
   levelEl.textContent = String(1 + Math.floor((player?.lines ?? 0) / 10));
-  playerEl.textContent = player ? `P${player.playerIndex + 1}` : "-";
+  playerEl.textContent = player ? getPlayerLabel(player.playerId) : "-";
   statusEl.textContent = appState.connected ? "connected" : "connecting";
 
   if (player?.gameOver) {
     setOverlay("Game Over", "Waiting for board reset...", true);
   } else {
     setOverlay("Border Tetris", "Shared world view", false);
+  }
+
+  if (Date.now() < appState.topologyMessageUntil) {
+    topologyEventEl.textContent = appState.topologyMessage;
+    topologyEventEl.classList.remove("hidden");
+  } else {
+    topologyEventEl.classList.add("hidden");
   }
 };
 
@@ -284,6 +622,43 @@ const sendInput = async (input) => {
   });
 };
 
+const stopHorizontalRepeat = (code) => {
+  const repeat = appState.repeatState[code];
+
+  if (!repeat) {
+    return;
+  }
+
+  window.clearTimeout(repeat.timeoutId);
+  window.clearInterval(repeat.intervalId);
+  delete appState.repeatState[code];
+};
+
+const startHorizontalRepeat = (code, input) => {
+  if (appState.repeatState[code]) {
+    return;
+  }
+
+  sendInput(input);
+  const timeoutId = window.setTimeout(() => {
+    const intervalId = window.setInterval(() => {
+      sendInput(input);
+    }, HORIZONTAL_REPEAT_INTERVAL_MS);
+    const repeat = appState.repeatState[code];
+
+    if (repeat) {
+      repeat.intervalId = intervalId;
+    } else {
+      window.clearInterval(intervalId);
+    }
+  }, HORIZONTAL_REPEAT_DELAY_MS);
+
+  appState.repeatState[code] = {
+    timeoutId,
+    intervalId: null,
+  };
+};
+
 const connectEvents = () => {
   if (appState.eventSource) {
     appState.eventSource.close();
@@ -294,7 +669,10 @@ const connectEvents = () => {
 
   eventSource.addEventListener("snapshot", (event) => {
     appState.connected = true;
-    appState.snapshot = JSON.parse(event.data);
+    const previousSnapshot = appState.snapshot;
+    const nextSnapshot = JSON.parse(event.data);
+    updateTopologyDiff(previousSnapshot, nextSnapshot);
+    appState.snapshot = nextSnapshot;
     render();
   });
 
@@ -308,7 +686,7 @@ const joinGame = async () => {
   const response = await fetch("/api/join", { method: "POST" });
 
   if (!response.ok) {
-    setOverlay("Room Full", "The room currently supports two players.", true);
+    setOverlay("Room Full", "The room currently has no free player slots.", true);
     return;
   }
 
@@ -324,23 +702,54 @@ document.addEventListener("keydown", (event) => {
     return;
   }
 
+  if (
+    event.code === "ArrowLeft" ||
+    event.code === "ArrowRight" ||
+    event.code === "ArrowDown" ||
+    event.code === "ArrowUp" ||
+    event.code === "Space"
+  ) {
+    event.preventDefault();
+  }
+
   if (event.code === "ArrowLeft") {
-    sendInput("left");
+    startHorizontalRepeat(event.code, "left");
   } else if (event.code === "ArrowRight") {
-    sendInput("right");
+    startHorizontalRepeat(event.code, "right");
   } else if (event.code === "ArrowDown") {
+    if (event.repeat) {
+      return;
+    }
     sendInput("down");
   } else if (event.code === "ArrowUp" || event.code === "KeyX") {
+    if (event.repeat) {
+      return;
+    }
     sendInput("rotateRight");
   } else if (event.code === "KeyZ") {
+    if (event.repeat) {
+      return;
+    }
     sendInput("rotateLeft");
   } else if (event.code === "Space") {
     event.preventDefault();
+    if (event.repeat) {
+      return;
+    }
     sendInput("drop");
   }
 });
 
+document.addEventListener("keyup", (event) => {
+  if (event.code === "ArrowLeft" || event.code === "ArrowRight") {
+    stopHorizontalRepeat(event.code);
+  }
+});
+
 window.addEventListener("beforeunload", () => {
+  stopHorizontalRepeat("ArrowLeft");
+  stopHorizontalRepeat("ArrowRight");
+
   if (!appState.playerId) {
     return;
   }
