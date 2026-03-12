@@ -263,7 +263,7 @@ const overlayTextEl = document.getElementById("overlay-text");
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
 const nextCanvas = document.getElementById("next");
-const nextCtx = nextCanvas.getContext("2d");
+const nextCtx = nextCanvas ? nextCanvas.getContext("2d") : null;
 
 const appState = {
   playerId: "",
@@ -316,6 +316,8 @@ const getRingPlayers = (snapshot) =>
     .map((playerId) => snapshot.players.find((player) => player.playerId === playerId) ?? null)
     .filter((player) => player !== null);
 
+const getMaxVisibleBoards = () => (appState.mode === "spectate" ? Number.POSITIVE_INFINITY : 5);
+
 const getBoardLayout = (snapshot, ownPlayerId) => {
   const ownPlayer =
     snapshot.players.find((player) => player.playerId === ownPlayerId) ?? getRingPlayers(snapshot)[0] ?? null;
@@ -328,10 +330,11 @@ const getBoardLayout = (snapshot, ownPlayerId) => {
   const leftPlayers = [];
   const rightPlayers = [];
   const seenIds = new Set([ownPlayer.playerId]);
+  const maxVisibleBoards = Math.min(ringPlayers.length, getMaxVisibleBoards());
   let leftCursor = ownPlayer.leftNeighbor;
   let rightCursor = ownPlayer.rightNeighbor;
 
-  while (seenIds.size < ringPlayers.length) {
+  while (seenIds.size < maxVisibleBoards) {
     if (leftCursor && !seenIds.has(leftCursor)) {
       const player = snapshot.players.find((entry) => entry.playerId === leftCursor);
 
@@ -346,7 +349,7 @@ const getBoardLayout = (snapshot, ownPlayerId) => {
       leftCursor = null;
     }
 
-    if (seenIds.size >= ringPlayers.length) {
+    if (seenIds.size >= maxVisibleBoards) {
       break;
     }
 
@@ -369,7 +372,10 @@ const getBoardLayout = (snapshot, ownPlayerId) => {
     }
   }
 
-  const fallbackPlayers = ringPlayers.filter((player) => !seenIds.has(player.playerId));
+  const fallbackPlayers =
+    appState.mode === "spectate"
+      ? ringPlayers.filter((player) => !seenIds.has(player.playerId))
+      : [];
   const orderedPlayers = [...leftPlayers.slice().reverse(), ownPlayer, ...rightPlayers, ...fallbackPlayers];
   const ownPosition = orderedPlayers.findIndex((player) => player.playerId === ownPlayer.playerId);
   const centerBoardStart = Math.floor(canvas.width / CELL_SIZE / 2 - PLAYER_WIDTH / 2);
@@ -430,7 +436,10 @@ const setCanvasSize = () => {
     return;
   }
 
-  const visibleBoardCount = Math.max(appState.snapshot.ringOrder.length, 1);
+  const visibleBoardCount = Math.max(
+    Math.min(appState.snapshot.ringOrder.length, getMaxVisibleBoards()),
+    1,
+  );
   canvas.width = Math.max(
     window.innerWidth - 720,
     visibleBoardCount * PLAYER_WIDTH * CELL_SIZE,
@@ -702,6 +711,10 @@ const drawBoard = () => {
 };
 
 const drawNext = () => {
+  if (!nextCanvas || !nextCtx) {
+    return;
+  }
+
   nextCtx.clearRect(0, 0, nextCanvas.width, nextCanvas.height);
   const player = appState.mode === "spectate" ? getPrimaryPlayerState() : getPlayerState();
 

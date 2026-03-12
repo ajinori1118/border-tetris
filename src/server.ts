@@ -183,7 +183,7 @@ const randomPieceType = (): PieceType => {
 };
 
 const scoreForClears = (clearCount: number): number =>
-  [0, 100, 300, 500, 800][clearCount] ?? clearCount * 200;
+  [0, 100, 200, 500, 800][clearCount] ?? clearCount * 200;
 
 const createEmptyClearRows = (playerCount: number): number[][] =>
   Array.from({ length: playerCount }, () => []);
@@ -612,6 +612,20 @@ const resetPlayerBoard = (session: SessionState, playerId: string): SessionState
   }
 
   const { startX, endX } = getBoardRange(player.playerIndex);
+  const bonusCellCounts = new Map<string, number>();
+
+  for (const cell of session.world.lockedCells) {
+    if (!isInsideBoardRange(cell.x, startX, endX)) {
+      continue;
+    }
+
+    if (cell.ownerId === playerId) {
+      continue;
+    }
+
+    bonusCellCounts.set(cell.ownerId, (bonusCellCounts.get(cell.ownerId) ?? 0) + 1);
+  }
+
   const preservedLockedCells = session.world.lockedCells.filter(
     (cell) => !isInsideBoardRange(cell.x, startX, endX),
   );
@@ -657,6 +671,12 @@ const resetPlayerBoard = (session: SessionState, playerId: string): SessionState
             role: "dead",
             reviveAtTick: session.tick + REVIVE_DELAY_TICKS,
           }
+        : entry.role === "playing"
+          ? {
+              ...entry,
+              score:
+                entry.score + (bonusCellCounts.get(entry.playerId) ?? 0) * player.score,
+            }
         : entry,
     ),
     pendingInputs: {

@@ -219,6 +219,56 @@ test("queuePlayerInput with up brakes falling", () => {
   assert.equal(piece.y, 1);
 });
 
+test("line clears use the configured base scores", () => {
+  const joined = joinSession(createSession(1));
+  assert.ok(joined.player);
+  const joinedPlayer = joined.player;
+
+  const scoringSession: SessionState = {
+    ...joined.session,
+    world: {
+      ...joined.session.world,
+      lockedCells: [
+        ...Array.from({ length: 8 }, (_, x) => ({
+          x,
+          y: 23,
+          ownerId: joinedPlayer.playerId,
+          pieceType: "I" as const,
+        })),
+        ...Array.from({ length: 8 }, (_, x) => ({
+          x,
+          y: 22,
+          ownerId: joinedPlayer.playerId,
+          pieceType: "I" as const,
+        })),
+      ],
+      activePieces: [
+        {
+          id: "scoring-piece",
+          ownerId: joinedPlayer.playerId,
+          type: "O" as const,
+          x: 8,
+          y: 21,
+          rotation: 0 as const,
+        },
+      ],
+    },
+    players: joined.session.players.map((player) =>
+      player.playerId === joinedPlayer.playerId
+        ? { ...player, connected: true, role: "playing" as const, playerIndex: 0 }
+        : player,
+    ),
+    ringOrder: [joinedPlayer.playerId],
+  };
+
+  const stepped = stepSession(queuePlayerInput(scoringSession, joinedPlayer.playerId, "drop"));
+  const player = stepped.session.players.find((entry) => entry.playerId === joinedPlayer.playerId);
+
+  assert.ok(player);
+  assert.equal(player.lines, 2);
+  assert.equal(player.score, 200);
+});
+
 test("queuePlayerInput cannot move into a board with no connected player", () => {
   const joined = joinSession(createSession(2));
   assert.ok(joined.player);
@@ -466,6 +516,52 @@ test("game over resets only that board and fixes surviving cells across the boun
     `10,5,${joinedTwo.player.playerId},I`,
     `11,5,${joinedTwo.player.playerId},I`,
   ]);
+});
+
+test("game over awards score to players with surviving locked cells in the defeated board", () => {
+  const joinedOne = joinSession(createSession(3));
+  assert.ok(joinedOne.player);
+  const playerOneId = joinedOne.player.playerId;
+  const joinedTwo = joinSession(joinedOne.session);
+  assert.ok(joinedTwo.player);
+  const playerTwoId = joinedTwo.player.playerId;
+  const joinedThree = joinSession(joinedTwo.session);
+  assert.ok(joinedThree.player);
+  const playerThreeId = joinedThree.player.playerId;
+
+  const session: SessionState = {
+    ...joinedThree.session,
+    world: {
+      ...joinedThree.session.world,
+      lockedCells: [
+        { x: 4, y: 1, ownerId: playerOneId, pieceType: "O" as const },
+        { x: 5, y: 1, ownerId: playerOneId, pieceType: "O" as const },
+        { x: 0, y: 10, ownerId: playerTwoId, pieceType: "T" as const },
+        { x: 1, y: 10, ownerId: playerTwoId, pieceType: "T" as const },
+        { x: 2, y: 10, ownerId: playerThreeId, pieceType: "L" as const },
+      ],
+      activePieces: [],
+    },
+    players: joinedThree.session.players.map((player) =>
+      player.playerId === playerOneId
+        ? { ...player, score: 800, nextType: "O" as const }
+        : player.playerId === playerThreeId
+          ? { ...player, role: "dead" as const, connected: true }
+          : player,
+    ),
+  };
+
+  const stepped = stepSession(session);
+  const playerOne = stepped.session.players.find((player) => player.playerId === playerOneId);
+  const playerTwo = stepped.session.players.find((player) => player.playerId === playerTwoId);
+  const playerThree = stepped.session.players.find((player) => player.playerId === playerThreeId);
+
+  assert.ok(playerOne);
+  assert.ok(playerTwo);
+  assert.ok(playerThree);
+  assert.equal(playerOne.score, 0);
+  assert.equal(playerTwo.score, 1600);
+  assert.equal(playerThree.score, 0);
 });
 
 test("dead players revive in the same ring position after the revive delay", () => {

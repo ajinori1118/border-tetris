@@ -275,6 +275,28 @@ button:last-child {
   padding: 20px 16px 32px;
 }
 
+.score-strip {
+  display: flex;
+  justify-content: center;
+  align-items: baseline;
+  gap: 10px;
+  margin-top: 14px;
+  color: var(--ink);
+}
+
+.score-strip strong {
+  font-size: 32px;
+}
+
+.spectate-page {
+  position: relative;
+  padding: 20px 16px 32px;
+}
+
+.spectate-board {
+  margin: 0 auto;
+}
+
 .game-only {
   max-width: none;
 }
